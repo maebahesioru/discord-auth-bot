@@ -41,9 +41,10 @@ def callback():
         "code": code,
         "redirect_uri": REDIRECT_URI,
     })
-    token = r.json().get("access_token")
+    token_data = r.json() if r.text else {}
+    token = token_data.get("access_token")
     if not token:
-        return "トークン取得失敗", 400
+        return "認証に失敗しました。もう一度 <a href='/auth'>こちら</a> からやり直してください。", 400
 
     headers = {"Authorization": f"Bearer {token}"}
 
