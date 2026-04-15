@@ -56,7 +56,7 @@ def callback():
     guild_ids = [g["id"] for g in guilds]
 
     if HIKAMANI_GUILD_ID in guild_ids:
-        return "❌ ヒカマニーズ鯖に参加しているため認証できません。", 403
+        return "❌ ヒカマニーズ鯖に参加しているため自動認証できません。<br>どうしても参加したい場合は <a href='https://discord.com/channels/1369976295395426328/1493885237330051112'>手動認証チャンネル</a> で要相談。", 403
 
     # ロール付与（Bot権限で）
     bot_headers = {"Authorization": f"Bot {BOT_TOKEN}"}
