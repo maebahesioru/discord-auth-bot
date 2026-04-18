@@ -420,7 +420,7 @@ import urllib.parse as _urlparse
 async def fetch_yahoo_spaces(session: aiohttp.ClientSession, handles: list[str]) -> list[dict]:
     """handle.txtのユーザーを50件ずつ分割してYahoo APIで検索し、スペースURLを含むツイートを返す"""
     results = []
-    chunk_size = 50
+    chunk_size = 150
     chunks = [handles[i:i+chunk_size] for i in range(0, len(handles), chunk_size)]
 
     async def fetch_chunk(chunk):
