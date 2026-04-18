@@ -605,7 +605,6 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         session = _vc_sessions.get(ch.id)
         if session:
             session["members"].discard(member.id)
-            # 全員退出 → 通話終了
             if not session["members"]:
                 duration = int(now - session["start"])
                 m, s = divmod(duration, 60)
@@ -613,28 +612,12 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
                 dur_str = f"{h}時間{m}分{s}秒" if h else f"{m}分{s}秒"
                 is_stage = isinstance(ch, discord.StageChannel)
                 kind = "ステージ" if is_stage else "通話"
-                embed = discord.Embed(
-                    title=f"🔴 {kind}終了: {ch.name}",
-                    color=0xED4245
-                )
+                embed = discord.Embed(title=f"🔴 {kind}終了: {ch.name}", color=0xED4245)
                 embed.add_field(name="通話時間", value=dur_str, inline=True)
                 embed.add_field(name="参加者数", value=f"{len(session['all_members'])}人", inline=True)
                 embed.add_field(name="参加者", value=", ".join(session["all_members_names"]) or "不明", inline=False)
                 await channel.send(embeds=[embed])
                 del _vc_sessions[ch.id]
-            else:
-                # まだ人がいる → 退出アナウンス
-                elapsed = int(now - session["start"])
-                em, es = divmod(elapsed, 60)
-                eh, em = divmod(em, 60)
-                elapsed_str = f"{eh}時間{em}分{es}秒" if eh else f"{em}分{es}秒"
-                is_stage = isinstance(ch, discord.StageChannel)
-                kind = "ステージ" if is_stage else "通話"
-                embed = discord.Embed(title=f"📤 {kind}退出: {ch.name}", color=0xFEE75C)
-                embed.add_field(name="退出者", value=member.display_name, inline=True)
-                embed.add_field(name="残り人数", value=f"{len(session['members'])}人", inline=True)
-                embed.add_field(name="経過時間", value=elapsed_str, inline=True)
-                await channel.send(embeds=[embed])
     if after.channel and after.channel != before.channel:
         ch = after.channel
         is_stage = isinstance(ch, discord.StageChannel)
@@ -648,32 +631,18 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
                 "all_members": {member.id},
                 "all_members_names": [member.display_name],
             }
-            embed = discord.Embed(
-                title=f"🟢 {kind}開始: {ch.name}",
-                color=0x57F287
-            )
+            is_stage = isinstance(ch, discord.StageChannel)
+            kind = "ステージ" if is_stage else "通話"
+            embed = discord.Embed(title=f"🟢 {kind}開始: {ch.name}", color=0x57F287)
             embed.add_field(name="開始者", value=member.display_name, inline=True)
             embed.add_field(name="チャンネル", value=ch.mention, inline=True)
             await channel.send(embeds=[embed])
         else:
-            # 既存通話に参加
             session = _vc_sessions[ch.id]
             session["members"].add(member.id)
             if member.id not in session["all_members"]:
                 session["all_members"].add(member.id)
                 session["all_members_names"].append(member.display_name)
-            elapsed = int(now - session["start"])
-            m, s = divmod(elapsed, 60)
-            h, m = divmod(m, 60)
-            elapsed_str = f"{h}時間{m}分{s}秒" if h else f"{m}分{s}秒"
-            embed = discord.Embed(
-                title=f"📥 {kind}参加: {ch.name}",
-                color=0x5865F2
-            )
-            embed.add_field(name="参加者", value=member.display_name, inline=True)
-            embed.add_field(name="現在の人数", value=f"{len(session['members'])}人", inline=True)
-            embed.add_field(name="経過時間", value=elapsed_str, inline=True)
-            await channel.send(embeds=[embed])
 
 # ── スラッシュコマンド ─────────────────────────────────────
 
