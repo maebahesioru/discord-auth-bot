@@ -30,6 +30,7 @@ VC_ANNOUNCE_CHANNEL_ID = 1494952877595295814
 VC_MONITOR_GUILD_ID    = 1369976295395426328
 HANDLE_TXT         = Path(os.environ.get("HANDLE_TXT", r"data/handle.txt"))
 STATE_PATH         = Path("data/state.json")
+DEAD_PENDING_PATH  = Path("data/dead_pending.json")  # {username: dead_count}
 COOLDOWNS_PATH     = Path("data/cooldowns.json")
 SPACE_SEEN_PATH    = Path("data/space_seen.json")
 HASHTAG_MONITORS = [
@@ -466,9 +467,11 @@ async def run_check():
     _monitoring_count = len(usernames)
 
     prev_state = load_json(STATE_PATH)
+    dead_pending = load_json(DEAD_PENDING_PATH)
     is_first = not prev_state
     new_state: dict = {}
     all_changes: list[dict] = []
+    new_dead_pending: dict = {}
 
     async with aiohttp.ClientSession() as session:
         results = await asyncio.gather(*[fetch_account(session, u) for u in usernames])
@@ -478,6 +481,18 @@ async def run_check():
             continue
         prev = prev_state.get(username)
         merged = merge_with_prev(prev, curr)
+
+        # 凍結判定: 2回連続deadで初めて通知
+        if not is_first and prev and prev.get("alive") and not merged.get("alive"):
+            count = dead_pending.get(username, 0) + 1
+            if count < 2:
+                new_dead_pending[username] = count
+                new_state[username] = prev  # まだ状態を更新しない
+                continue
+            # 2回連続 → 本物の凍結
+        elif merged.get("alive"):
+            pass  # deadペンディングをクリア（username not in new_dead_pending）
+
         new_state[username] = merged
         if not is_first:
             if prev:
@@ -501,6 +516,7 @@ async def run_check():
             return
 
     save_json(STATE_PATH, new_state)
+    save_json(DEAD_PENDING_PATH, new_dead_pending)
     _last_check = time.time()
 
     if not all_changes:
