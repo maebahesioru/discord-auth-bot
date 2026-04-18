@@ -496,7 +496,9 @@ async def run_check():
         new_state[username] = merged
         if not is_first:
             if prev:
-                changes = diff(username, prev, merged)
+                # 復活時はprevを現在値で初期化して差分が出ないようにする
+                effective_prev = merged if (not prev.get("alive") and merged.get("alive")) else prev
+                changes = diff(username, effective_prev, merged)
                 all_changes.extend(changes)
                 # ユーザー名変更を検知したらhandle.txtを自動更新
                 if merged.get("alive") and merged["screen_name"] != username:
