@@ -407,7 +407,7 @@ def diff(username: str, prev: dict, curr: dict) -> list[dict]:
 
     return changes
 
-async def send_change_embed(channel: discord.TextChannel, change: dict):
+async def send_change_embed(channel: discord.TextChannel, change: dict, mention: str | None = ...):
     embed = discord.Embed(description=change["text"], color=change.get("color", 0x5865F2))
     if change.get("name") and change.get("username"):
         kwargs = {"name": f"{change['name']} (@{change['username']})"}
@@ -416,8 +416,9 @@ async def send_change_embed(channel: discord.TextChannel, change: dict):
         embed.set_author(**kwargs)
     if change.get("imageUrl"):
         embed.set_image(url=change["imageUrl"])
-    role_id = NOTIFY_ROLE_MAP.get(channel.id)
-    mention = f"<@&{role_id}>" if role_id else None
+    if mention is ...:
+        role_id = NOTIFY_ROLE_MAP.get(channel.id)
+        mention = f"<@&{role_id}>" if role_id else None
     await channel.send(content=mention, embeds=[embed])
 
 async def notify(channel: discord.TextChannel, all_changes: list[dict]):
@@ -438,13 +439,20 @@ async def notify(channel: discord.TextChannel, all_changes: list[dict]):
 
     save_json(COOLDOWNS_PATH, cooldowns)
 
+    role_id = NOTIFY_ROLE_MAP.get(channel.id)
+    mention = f"<@&{role_id}>" if role_id else None
+    first_sent = False
+
     for changes in grouped.values():
         first = changes[0]
         image_url = next((c["imageUrl"] for c in changes if c.get("imageUrl")), None)
         text = "\n".join(c["text"] for c in changes)
-        await send_change_embed(channel, {**first, "text": text, "imageUrl": image_url})
+        await send_change_embed(channel, {**first, "text": text, "imageUrl": image_url},
+                                mention=mention if not first_sent else None)
+        first_sent = True
     for ch in ungrouped:
-        await send_change_embed(channel, ch)
+        await send_change_embed(channel, ch, mention=mention if not first_sent else None)
+        first_sent = True
 
 _last_check: float | None = None
 _next_check: float | None = None
