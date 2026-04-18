@@ -517,43 +517,36 @@ async def run_hashtag_check():
     channel = bot.get_channel(HASHTAG_CHANNEL_ID)
     new_seen = dict(seen)
 
+    q = _urlparse.quote("(" + " ".join(HASHTAG_QUERIES) + ")")
     async with aiohttp.ClientSession() as session:
-        async def fetch_hashtag(tag):
-            q = _urlparse.quote(tag)
+        try:
             url = f"https://search.yahoo.co.jp/realtime/api/v1/pagination?p={q}&md=t&results=40"
-            try:
-                async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
-                    if res.status != 200:
-                        return []
-                    j = await res.json(content_type=None)
-                    return j.get("timeline", {}).get("entry", [])
-            except Exception:
-                return []
+            async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
+                entries = (await res.json(content_type=None)).get("timeline", {}).get("entry", []) if res.status == 200 else []
+        except Exception:
+            entries = []
 
-        results = await asyncio.gather(*[fetch_hashtag(t) for t in HASHTAG_QUERIES])
+    for entry in entries:
+        tweet_id = entry.get("id", "")
+        if not tweet_id or tweet_id in new_seen:
+            continue
+        new_seen[tweet_id] = True
+        if is_first or not channel:
+            continue
 
-    for entries in results:
-        for entry in entries:
-            tweet_id = entry.get("id", "")
-            if not tweet_id or tweet_id in new_seen:
-                continue
-            new_seen[tweet_id] = True
-            if is_first or not channel:
-                continue
+        name = entry.get("name", entry.get("screenName", ""))
+        screen_name = entry.get("screenName", "")
+        avatar = entry.get("profileImage", "")
+        text = clean_text(entry.get("displayText", ""))
+        for u in entry.get("urls", []):
+            text = text.replace(u.get("url", ""), "").strip()
+        tweet_url = entry.get("url", f"https://x.com/{screen_name}/status/{tweet_id}")
+        badge = entry.get("badge", {})
+        color = 0x1DA1F2 if badge.get("type") == "blue" else 0xDBAB00 if badge.get("type") == "business" else 0x5865F2
 
-            name = entry.get("name", entry.get("screenName", ""))
-            screen_name = entry.get("screenName", "")
-            avatar = entry.get("profileImage", "")
-            text = clean_text(entry.get("displayText", ""))
-            for u in entry.get("urls", []):
-                text = text.replace(u.get("url", ""), "").strip()
-            tweet_url = entry.get("url", f"https://x.com/{screen_name}/status/{tweet_id}")
-            badge = entry.get("badge", {})
-            color = 0x1DA1F2 if badge.get("type") == "blue" else 0xDBAB00 if badge.get("type") == "business" else 0x5865F2
-
-            embed = discord.Embed(description=text, color=color, url=tweet_url)
-            embed.set_author(name=f"{name} (@{screen_name})", icon_url=avatar, url=f"https://x.com/{screen_name}")
-            await channel.send(embeds=[embed])
+        embed = discord.Embed(description=text, color=color, url=tweet_url)
+        embed.set_author(name=f"{name} (@{screen_name})", icon_url=avatar, url=f"https://x.com/{screen_name}")
+        await channel.send(embeds=[embed])
 
     save_json(HASHTAG_SEEN_PATH, new_seen)
     if is_first:
