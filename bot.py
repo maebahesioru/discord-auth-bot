@@ -147,7 +147,25 @@ ROLE_MENU_ROLES = [
     {"label": "細かいお知らせ",             "role_id": 1494956183315021895, "emoji": "📢"},
     {"label": "サイトアップデートお知らせ", "role_id": 1494890179368980663, "emoji": "🌐"},
     {"label": "ヒカマーズマイクラ",         "role_id": 1494890135727112313, "emoji": "⛏️"},
+    {"label": "ヒカマーAI生成情報",         "role_id": 1494957723354140775, "emoji": "🤖"},
+    {"label": "ヒカマースペース情報",       "role_id": 1494957639287705690, "emoji": "🎙️"},
+    {"label": "新参ヒカマー情報",           "role_id": 1494957608874938388, "emoji": "🆕"},
+    {"label": "ヒカマー飯情報",             "role_id": 1494957511151714376, "emoji": "🍜"},
+    {"label": "ヒカマーズアル〇イダ情報",   "role_id": 1494957461642416178, "emoji": "💣"},
+    {"label": "ヒカマーズアカウント情報",   "role_id": 1494957409796358236, "emoji": "👤"},
+    {"label": "通話情報",                   "role_id": 1494957377315668000, "emoji": "🔊"},
 ]
+
+# 各通知チャンネルに対応するメンションロールID
+NOTIFY_ROLE_MAP = {
+    TWITTER_CHANNEL_ID:  1494957409796358236,  # ヒカマーズアカウント情報
+    SPACE_CHANNEL_ID:    1494957639287705690,  # ヒカマースペース情報
+    VC_ANNOUNCE_CHANNEL_ID: 1494957377315668000,  # 通話情報
+    1494937230970458313: 1494957608874938388,  # 新参ヒカマー情報
+    1494937269079900265: 1494957461642416178,  # ヒカマーズアル〇イダ情報
+    1494937304932945990: 1494957723354140775,  # ヒカマーAI生成情報
+    1494941977576210563: 1494957511151714376,  # ヒカマー飯情報
+}
 
 class RoleSelect(discord.ui.Select):
     def __init__(self):
@@ -398,7 +416,9 @@ async def send_change_embed(channel: discord.TextChannel, change: dict):
         embed.set_author(**kwargs)
     if change.get("imageUrl"):
         embed.set_image(url=change["imageUrl"])
-    await channel.send(embeds=[embed])
+    role_id = NOTIFY_ROLE_MAP.get(channel.id)
+    mention = f"<@&{role_id}>" if role_id else None
+    await channel.send(content=mention, embeds=[embed])
 
 async def notify(channel: discord.TextChannel, all_changes: list[dict]):
     cooldowns = load_json(COOLDOWNS_PATH)
@@ -564,7 +584,8 @@ async def run_space_check():
         media_url = get_media_url(entry)
         if media_url:
             embed.set_image(url=media_url)
-        await channel.send(embeds=[embed])
+        role_id = NOTIFY_ROLE_MAP.get(SPACE_CHANNEL_ID)
+        await channel.send(content=f"<@&{role_id}>" if role_id else None, embeds=[embed])
 
     save_json(SPACE_SEEN_PATH, new_seen)
     if is_first:
@@ -629,7 +650,8 @@ async def run_hashtag_check(monitor: dict):
         media_url = get_media_url(entry)
         if media_url:
             embed.set_image(url=media_url)
-        await channel.send(embeds=[embed])
+        role_id = NOTIFY_ROLE_MAP.get(monitor["channel_id"])
+        await channel.send(content=f"<@&{role_id}>" if role_id else None, embeds=[embed])
 
     save_json(monitor["seen_path"], new_seen)
     if is_first:
@@ -676,7 +698,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
                 embed.add_field(name="通話時間", value=dur_str, inline=True)
                 embed.add_field(name="参加者数", value=f"{len(session['all_members'])}人", inline=True)
                 embed.add_field(name="参加者", value=", ".join(session["all_members_names"]) or "不明", inline=False)
-                await channel.send(embeds=[embed])
+                vc_role_id = NOTIFY_ROLE_MAP.get(VC_ANNOUNCE_CHANNEL_ID)
+                await channel.send(content=f"<@&{vc_role_id}>" if vc_role_id else None, embeds=[embed])
                 del _vc_sessions[ch.id]
     if after.channel and after.channel != before.channel:
         ch = after.channel
@@ -696,7 +719,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             embed = discord.Embed(title=f"🟢 {kind}開始: {ch.name}", color=0x57F287)
             embed.add_field(name="開始者", value=member.display_name, inline=True)
             embed.add_field(name="チャンネル", value=ch.mention, inline=True)
-            await channel.send(embeds=[embed])
+            vc_role_id = NOTIFY_ROLE_MAP.get(VC_ANNOUNCE_CHANNEL_ID)
+            await channel.send(content=f"<@&{vc_role_id}>" if vc_role_id else None, embeds=[embed])
         else:
             session = _vc_sessions[ch.id]
             session["members"].add(member.id)
