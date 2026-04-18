@@ -446,13 +446,14 @@ def clean_text(text: str) -> str:
 
 async def run_space_check():
     handles = [l.strip() for l in HANDLE_TXT.read_text("utf-8").splitlines() if l.strip()]
-    seen = load_json(SPACE_SEEN_PATH)  # {tweet_id: True}
+    seen = load_json(SPACE_SEEN_PATH)
+    is_first = not seen
 
     async with aiohttp.ClientSession() as session:
         entries = await fetch_yahoo_spaces(session, handles)
 
     channel = bot.get_channel(SPACE_CHANNEL_ID)
-    if not channel:
+    if not channel and not is_first:
         return
 
     new_seen = dict(seen)
@@ -466,16 +467,14 @@ async def run_space_check():
             if "/i/spaces/" in eu:
                 space_url = eu
                 break
-        if not space_url:
-            new_seen[tweet_id] = True
+        new_seen[tweet_id] = True
+        if not space_url or is_first:
             continue
 
-        new_seen[tweet_id] = True
         name = entry.get("name", entry.get("screenName", ""))
         screen_name = entry.get("screenName", "")
         avatar = entry.get("profileImage", "")
         text = clean_text(entry.get("displayText", ""))
-        # t.co短縮URLを除去
         for u in entry.get("urls", []):
             text = text.replace(u.get("url", ""), "").strip()
         badge = entry.get("badge", {})
@@ -486,6 +485,8 @@ async def run_space_check():
         await channel.send(embeds=[embed])
 
     save_json(SPACE_SEEN_PATH, new_seen)
+    if is_first:
+        print(f"[space] 初回: {len(new_seen)}件を既読としてスキップ")
 
 async def twitter_monitor_loop():
     global _next_check
