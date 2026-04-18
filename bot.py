@@ -475,6 +475,9 @@ async def run_space_check():
         screen_name = entry.get("screenName", "")
         avatar = entry.get("profileImage", "")
         text = clean_text(entry.get("displayText", ""))
+        # t.co短縮URLを除去
+        for u in entry.get("urls", []):
+            text = text.replace(u.get("url", ""), "").strip()
         badge = entry.get("badge", {})
         color = 0x1DA1F2 if badge.get("type") == "blue" else 0xDBAB00 if badge.get("type") == "business" else 0x5865F2
 
