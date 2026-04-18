@@ -425,7 +425,7 @@ async def fetch_yahoo_spaces(session: aiohttp.ClientSession, handles: list[str])
 
     async def fetch_chunk(chunk):
         or_part = " OR ".join(f"ID:{h}" for h in chunk)
-        q = _urlparse.quote(f"({or_part}) URL:x.com/i/spaces")
+        q = _urlparse.quote(f"({or_part}) (URL:x.com/i/spaces OR URL:twitter.com/i/spaces)")
         url = f"https://search.yahoo.co.jp/realtime/api/v1/pagination?p={q}&md=t&results=40"
         try:
             async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
