@@ -444,6 +444,14 @@ async def fetch_yahoo_spaces(session: aiohttp.ClientSession, handles: list[str])
         results.extend(entries)
     return results
 
+def get_media_url(entry: dict) -> str | None:
+    """1枚目の画像URLを返す（動画・gifはサムネ）"""
+    media = entry.get("media", [])
+    if not media:
+        return None
+    item = media[0].get("item", {})
+    return item.get("mediaUrl") or item.get("thumbnailImageUrl")
+
 def clean_text(text: str) -> str:
     return _re.sub(r'\tSTART\t|\tEND\t', '', text).strip()
 
@@ -486,6 +494,9 @@ async def run_space_check():
 
         embed = discord.Embed(description=f"{text}\n\n🎙️ {space_url}", color=color, url=space_url)
         embed.set_author(name=f"{name} (@{screen_name})", icon_url=avatar, url=f"https://x.com/{screen_name}")
+        media_url = get_media_url(entry)
+        if media_url:
+            embed.set_image(url=media_url)
         await channel.send(embeds=[embed])
 
     save_json(SPACE_SEEN_PATH, new_seen)
@@ -549,6 +560,9 @@ async def run_hashtag_check():
 
         embed = discord.Embed(description=text, color=color, url=tweet_url)
         embed.set_author(name=f"{name} (@{screen_name})", icon_url=avatar, url=f"https://x.com/{screen_name}")
+        media_url = get_media_url(entry)
+        if media_url:
+            embed.set_image(url=media_url)
         await channel.send(embeds=[embed])
 
     save_json(HASHTAG_SEEN_PATH, new_seen)
