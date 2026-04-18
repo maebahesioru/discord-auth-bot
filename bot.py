@@ -180,6 +180,7 @@ class RoleSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         selected = {int(v) for v in self.values}
         all_role_ids = {r["role_id"] for r in ROLE_MENU_ROLES}
         added, removed = [], []
@@ -198,7 +199,7 @@ class RoleSelect(discord.ui.Select):
         if added:   parts.append(f"追加: {', '.join(added)}")
         if removed: parts.append(f"削除: {', '.join(removed)}")
         msg = "\n".join(parts) if parts else "変更なし"
-        await interaction.response.send_message(msg, ephemeral=True)
+        await interaction.followup.send(msg, ephemeral=True)
 
 class RoleMenuView(discord.ui.View):
     def __init__(self):
@@ -671,7 +672,7 @@ async def hashtag_monitor_loop():
         try:
             await asyncio.gather(*[run_hashtag_check(m) for m in HASHTAG_MONITORS])
         except Exception as e:
-            print(f"[hashtag] エラー: {e}")
+            print(f"[hashtag] エラー: {e}", flush=True)
         await asyncio.sleep(INTERVAL_SEC)
 
 # ── VC/ステージ監視 ───────────────────────────────────────
