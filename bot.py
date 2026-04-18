@@ -25,13 +25,17 @@ OAUTH_URL = (
 )
 
 TWITTER_CHANNEL_ID = int(os.environ.get("TWITTER_CHANNEL_ID", "1494904804533600326"))
-HANDLE_TXT = Path(os.environ.get("HANDLE_TXT", r"data/handle.txt"))
+SPACE_CHANNEL_ID   = int(os.environ.get("SPACE_CHANNEL_ID", "1494905257510047868"))
+HANDLE_TXT         = Path(os.environ.get("HANDLE_TXT", r"data/handle.txt"))
 STATE_PATH         = Path("data/state.json")
 COOLDOWNS_PATH     = Path("data/cooldowns.json")
+SPACE_SEEN_PATH    = Path("data/space_seen.json")
 INTERVAL_SEC       = 5 * 60
 COOLDOWN_SEC       = 30 * 60
 FX_RETRIES         = max(1, int(os.environ.get("FXTWITTER_FETCH_RETRIES", 5)))
 FX_RETRY_BASE_MS   = max(50, int(os.environ.get("FXTWITTER_RETRY_BASE_MS", 500)))
+YAHOO_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+YAHOO_HEADERS = {"User-Agent": YAHOO_UA, "Accept": "application/json, text/plain, */*", "Referer": "https://search.yahoo.co.jp/realtime/search"}
 
 UA_POOL = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -408,6 +412,86 @@ async def run_check():
         await notify(channel, all_changes)
     print(f"[{time.strftime('%H:%M:%S')}] {len(all_changes)} 件通知")
 
+# ── スペース監視機能 ──────────────────────────────────────
+
+import re as _re
+import urllib.parse as _urlparse
+
+async def fetch_yahoo_spaces(session: aiohttp.ClientSession, handles: list[str]) -> list[dict]:
+    """handle.txtのユーザーを50件ずつ分割してYahoo APIで検索し、スペースURLを含むツイートを返す"""
+    results = []
+    chunk_size = 50
+    chunks = [handles[i:i+chunk_size] for i in range(0, len(handles), chunk_size)]
+
+    async def fetch_chunk(chunk):
+        or_part = " OR ".join(f"ID:{h}" for h in chunk)
+        q = _urlparse.quote(f"({or_part}) URL:x.com/i/spaces")
+        url = f"https://search.yahoo.co.jp/realtime/api/v1/pagination?p={q}&md=t&results=40"
+        try:
+            async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
+                if res.status != 200:
+                    return []
+                j = await res.json(content_type=None)
+                return j.get("timeline", {}).get("entry", [])
+        except Exception:
+            return []
+
+    entries_list = await asyncio.gather(*[fetch_chunk(c) for c in chunks])
+    for entries in entries_list:
+        results.extend(entries)
+    return results
+
+def extract_space_url(text: str) -> str | None:
+    """ツイート本文からスペースURLを抽出（t.co短縮URLは除く）"""
+    m = _re.search(r'https?://(?:x|twitter)\.com/i/spaces/\w+', text)
+    return m.group(0) if m else None
+
+def clean_text(text: str) -> str:
+    return _re.sub(r'\tSTART\t|\tEND\t', '', text).strip()
+
+async def run_space_check():
+    handles = [l.strip() for l in HANDLE_TXT.read_text("utf-8").splitlines() if l.strip()]
+    seen = load_json(SPACE_SEEN_PATH)  # {tweet_id: True}
+
+    async with aiohttp.ClientSession() as session:
+        entries = await fetch_yahoo_spaces(session, handles)
+
+    channel = bot.get_channel(SPACE_CHANNEL_ID)
+    if not channel:
+        return
+
+    new_seen = dict(seen)
+    for entry in entries:
+        tweet_id = entry.get("id", "")
+        if not tweet_id or tweet_id in seen:
+            continue
+        # t.co URLしかない場合はスキップ（スペースURLが本文に直接ない）
+        space_url = extract_space_url(clean_text(entry.get("displayText", "")))
+        if not space_url:
+            # urlsフィールドのexpandedUrlから探す
+            for u in entry.get("urls", []):
+                eu = u.get("expandedUrl", "")
+                if "/i/spaces/" in eu:
+                    space_url = eu
+                    break
+        if not space_url:
+            new_seen[tweet_id] = True
+            continue
+
+        new_seen[tweet_id] = True
+        name = entry.get("name", entry.get("screenName", ""))
+        screen_name = entry.get("screenName", "")
+        avatar = entry.get("profileImage", "")
+        text = clean_text(entry.get("displayText", ""))
+        badge = entry.get("badge", {})
+        color = 0x1DA1F2 if badge.get("type") == "blue" else 0xDBAB00 if badge.get("type") == "business" else 0x5865F2
+
+        embed = discord.Embed(description=f"{text}\n\n🎙️ {space_url}", color=color, url=space_url)
+        embed.set_author(name=f"{name} (@{screen_name})", icon_url=avatar, url=f"https://x.com/{screen_name}")
+        await channel.send(embeds=[embed])
+
+    save_json(SPACE_SEEN_PATH, new_seen)
+
 async def twitter_monitor_loop():
     global _next_check
     await bot.wait_until_ready()
@@ -417,6 +501,15 @@ async def twitter_monitor_loop():
         except Exception as e:
             print(f"[monitor] エラー: {e}")
         _next_check = time.time() + INTERVAL_SEC
+        await asyncio.sleep(INTERVAL_SEC)
+
+async def space_monitor_loop():
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            await run_space_check()
+        except Exception as e:
+            print(f"[space] エラー: {e}")
         await asyncio.sleep(INTERVAL_SEC)
 
 # ── スラッシュコマンド ─────────────────────────────────────
@@ -487,6 +580,7 @@ async def on_ready():
     print(f"起動: {bot.user}")
     threading.Thread(target=run_flask, daemon=True).start()
     bot.loop.create_task(twitter_monitor_loop())
+    bot.loop.create_task(space_monitor_loop())
 
 
 bot.run(TOKEN)
