@@ -346,6 +346,7 @@ def diff(username: str, prev: dict, curr: dict) -> list[dict]:
         c(f"{tag}が凍結または垢消し"); return changes
     if not prev.get("alive") and curr.get("alive"):
         c(f"{tag}が復活")
+        return changes  # 復活時は数値・テキスト差分をスキップ（凍結前との比較は無意味）
     if not curr.get("alive"):
         return changes
 
