@@ -622,8 +622,19 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
                 embed.add_field(name="参加者", value=", ".join(session["all_members_names"]) or "不明", inline=False)
                 await channel.send(embeds=[embed])
                 del _vc_sessions[ch.id]
-
-    # 通話チャンネルに参加
+            else:
+                # まだ人がいる → 退出アナウンス
+                elapsed = int(now - session["start"])
+                em, es = divmod(elapsed, 60)
+                eh, em = divmod(em, 60)
+                elapsed_str = f"{eh}時間{em}分{es}秒" if eh else f"{em}分{es}秒"
+                is_stage = isinstance(ch, discord.StageChannel)
+                kind = "ステージ" if is_stage else "通話"
+                embed = discord.Embed(title=f"📤 {kind}退出: {ch.name}", color=0xFEE75C)
+                embed.add_field(name="退出者", value=member.display_name, inline=True)
+                embed.add_field(name="残り人数", value=f"{len(session['members'])}人", inline=True)
+                embed.add_field(name="経過時間", value=elapsed_str, inline=True)
+                await channel.send(embeds=[embed])
     if after.channel and after.channel != before.channel:
         ch = after.channel
         is_stage = isinstance(ch, discord.StageChannel)
