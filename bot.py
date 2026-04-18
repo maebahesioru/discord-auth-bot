@@ -26,6 +26,8 @@ OAUTH_URL = (
 
 TWITTER_CHANNEL_ID = int(os.environ.get("TWITTER_CHANNEL_ID", "1494904804533600326"))
 SPACE_CHANNEL_ID   = int(os.environ.get("SPACE_CHANNEL_ID", "1494905257510047868"))
+VC_ANNOUNCE_CHANNEL_ID = 1494952877595295814
+VC_MONITOR_GUILD_ID    = 1369976295395426328
 HANDLE_TXT         = Path(os.environ.get("HANDLE_TXT", r"data/handle.txt"))
 STATE_PATH         = Path("data/state.json")
 COOLDOWNS_PATH     = Path("data/cooldowns.json")
@@ -60,6 +62,8 @@ AGE_MILESTONES = [100,200,365,500,730,1000,1500,2000,3000,5000]
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.voice_states = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ── Flask認証サーバー ─────────────────────────────────────
@@ -579,6 +583,86 @@ async def hashtag_monitor_loop():
         except Exception as e:
             print(f"[hashtag] エラー: {e}")
         await asyncio.sleep(INTERVAL_SEC)
+
+# ── VC/ステージ監視 ───────────────────────────────────────
+
+# {channel_id: {"start": float, "members": set[int]}}
+_vc_sessions: dict[int, dict] = {}
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    if member.guild.id != VC_MONITOR_GUILD_ID:
+        return
+    channel = bot.get_channel(VC_ANNOUNCE_CHANNEL_ID)
+    if not channel:
+        return
+
+    now = time.time()
+
+    # 通話チャンネルから退出
+    if before.channel and before.channel != after.channel:
+        ch = before.channel
+        session = _vc_sessions.get(ch.id)
+        if session:
+            session["members"].discard(member.id)
+            # 全員退出 → 通話終了
+            if not session["members"]:
+                duration = int(now - session["start"])
+                m, s = divmod(duration, 60)
+                h, m = divmod(m, 60)
+                dur_str = f"{h}時間{m}分{s}秒" if h else f"{m}分{s}秒"
+                is_stage = isinstance(ch, discord.StageChannel)
+                kind = "ステージ" if is_stage else "通話"
+                embed = discord.Embed(
+                    title=f"🔴 {kind}終了: {ch.name}",
+                    color=0xED4245
+                )
+                embed.add_field(name="通話時間", value=dur_str, inline=True)
+                embed.add_field(name="参加者数", value=f"{len(session['all_members'])}人", inline=True)
+                embed.add_field(name="参加者", value=", ".join(session["all_members_names"]) or "不明", inline=False)
+                await channel.send(embeds=[embed])
+                del _vc_sessions[ch.id]
+
+    # 通話チャンネルに参加
+    if after.channel and after.channel != before.channel:
+        ch = after.channel
+        is_stage = isinstance(ch, discord.StageChannel)
+        kind = "ステージ" if is_stage else "通話"
+
+        if ch.id not in _vc_sessions:
+            # 通話開始
+            _vc_sessions[ch.id] = {
+                "start": now,
+                "members": {member.id},
+                "all_members": {member.id},
+                "all_members_names": [member.display_name],
+            }
+            embed = discord.Embed(
+                title=f"🟢 {kind}開始: {ch.name}",
+                color=0x57F287
+            )
+            embed.add_field(name="開始者", value=member.display_name, inline=True)
+            embed.add_field(name="チャンネル", value=ch.mention, inline=True)
+            await channel.send(embeds=[embed])
+        else:
+            # 既存通話に参加
+            session = _vc_sessions[ch.id]
+            session["members"].add(member.id)
+            if member.id not in session["all_members"]:
+                session["all_members"].add(member.id)
+                session["all_members_names"].append(member.display_name)
+            elapsed = int(now - session["start"])
+            m, s = divmod(elapsed, 60)
+            h, m = divmod(m, 60)
+            elapsed_str = f"{h}時間{m}分{s}秒" if h else f"{m}分{s}秒"
+            embed = discord.Embed(
+                title=f"📥 {kind}参加: {ch.name}",
+                color=0x5865F2
+            )
+            embed.add_field(name="参加者", value=member.display_name, inline=True)
+            embed.add_field(name="現在の人数", value=f"{len(session['members'])}人", inline=True)
+            embed.add_field(name="経過時間", value=elapsed_str, inline=True)
+            await channel.send(embeds=[embed])
 
 # ── スラッシュコマンド ─────────────────────────────────────
 
