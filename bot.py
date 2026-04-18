@@ -140,6 +140,66 @@ async def slash_setup(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed, view=AuthView())
 
+# ── リアクションロール ─────────────────────────────────────
+
+ROLE_MENU_CHANNEL_ID = 1369978936653512754
+ROLE_MENU_ROLES = [
+    {"label": "細かいお知らせ",             "role_id": 1494956183315021895, "emoji": "📢"},
+    {"label": "サイトアップデートお知らせ", "role_id": 1494890179368980663, "emoji": "🌐"},
+    {"label": "ヒカマーズマイクラ",         "role_id": 1494890135727112313, "emoji": "⛏️"},
+]
+
+class RoleSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label=r["label"], value=str(r["role_id"]), emoji=r["emoji"])
+            for r in ROLE_MENU_ROLES
+        ]
+        super().__init__(
+            placeholder="受け取りたいロールを選択（複数可）",
+            min_values=0, max_values=len(options),
+            options=options, custom_id="role_select"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        selected = {int(v) for v in self.values}
+        all_role_ids = {r["role_id"] for r in ROLE_MENU_ROLES}
+        added, removed = [], []
+        for role_id in all_role_ids:
+            role = interaction.guild.get_role(role_id)
+            if not role:
+                continue
+            has = role in interaction.user.roles
+            if role_id in selected and not has:
+                await interaction.user.add_roles(role)
+                added.append(role.name)
+            elif role_id not in selected and has:
+                await interaction.user.remove_roles(role)
+                removed.append(role.name)
+        parts = []
+        if added:   parts.append(f"追加: {', '.join(added)}")
+        if removed: parts.append(f"削除: {', '.join(removed)}")
+        msg = "\n".join(parts) if parts else "変更なし"
+        await interaction.response.send_message(msg, ephemeral=True)
+
+class RoleMenuView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(RoleSelect())
+
+@bot.tree.command(name="rolemenu", description="ロール選択メニューを設置する")
+@app_commands.default_permissions(administrator=True)
+async def slash_rolemenu(interaction: discord.Interaction):
+    if interaction.channel_id != ROLE_MENU_CHANNEL_ID:
+        await interaction.response.send_message("指定チャンネルで実行してください。", ephemeral=True)
+        return
+    embed = discord.Embed(
+        title="ロール選択",
+        description="受け取りたい通知ロールを選択してください。\n選択を外すとロールが削除されます。",
+        color=discord.Color.blurple()
+    )
+    await interaction.response.send_message(embed=embed, view=RoleMenuView())
+
 # ── Twitter監視機能 ───────────────────────────────────────
 
 
@@ -708,6 +768,7 @@ async def slash_account(interaction: discord.Interaction, username: str):
 @bot.event
 async def on_ready():
     bot.add_view(AuthView())
+    bot.add_view(RoleMenuView())
     await bot.tree.sync()
     print(f"起動: {bot.user}")
     threading.Thread(target=run_flask, daemon=True).start()
