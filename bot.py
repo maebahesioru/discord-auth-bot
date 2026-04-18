@@ -26,13 +26,14 @@ OAUTH_URL = (
 
 TWITTER_CHANNEL_ID = int(os.environ.get("TWITTER_CHANNEL_ID", "1494904804533600326"))
 SPACE_CHANNEL_ID   = int(os.environ.get("SPACE_CHANNEL_ID", "1494905257510047868"))
-HASHTAG_CHANNEL_ID = int(os.environ.get("HASHTAG_CHANNEL_ID", "1494937230970458313"))
 HANDLE_TXT         = Path(os.environ.get("HANDLE_TXT", r"data/handle.txt"))
 STATE_PATH         = Path("data/state.json")
 COOLDOWNS_PATH     = Path("data/cooldowns.json")
 SPACE_SEEN_PATH    = Path("data/space_seen.json")
-HASHTAG_SEEN_PATH  = Path("data/hashtag_seen.json")
-HASHTAG_QUERIES    = ["#新参ヒカマー", "#新人ヒカマー", "#ヒカマーズ馴れ合い"]
+HASHTAG_MONITORS = [
+    {"queries": ["#新参ヒカマー", "#新人ヒカマー", "#ヒカマーズ馴れ合い"], "channel_id": 1494937230970458313, "seen_path": Path("data/hashtag_seen.json")},
+    {"queries": ["#ヒカマーズアルカイダ"],                                  "channel_id": 1494937269079900265, "seen_path": Path("data/hashtag_alkaida_seen.json")},
+]
 INTERVAL_SEC       = 5 * 60
 COOLDOWN_SEC       = 30 * 60
 FX_RETRIES         = max(1, int(os.environ.get("FXTWITTER_FETCH_RETRIES", 5)))
@@ -523,13 +524,13 @@ async def space_monitor_loop():
             print(f"[space] エラー: {e}")
         await asyncio.sleep(INTERVAL_SEC)
 
-async def run_hashtag_check():
-    seen = load_json(HASHTAG_SEEN_PATH)
+async def run_hashtag_check(monitor: dict):
+    seen = load_json(monitor["seen_path"])
     is_first = not seen
-    channel = bot.get_channel(HASHTAG_CHANNEL_ID)
+    channel = bot.get_channel(monitor["channel_id"])
     new_seen = dict(seen)
 
-    q = _urlparse.quote("(" + " ".join(HASHTAG_QUERIES) + ")")
+    q = _urlparse.quote("(" + " ".join(monitor["queries"]) + ")")
     async with aiohttp.ClientSession() as session:
         try:
             url = f"https://search.yahoo.co.jp/realtime/api/v1/pagination?p={q}&md=t&results=40"
@@ -552,7 +553,6 @@ async def run_hashtag_check():
         text = clean_text(entry.get("displayText", ""))
         for u in entry.get("urls", []):
             text = text.replace(u.get("url", ""), "").strip()
-        # t.coが残っている場合も除去
         text = _re.sub(r'https?://t\.co/\S+', '', text).strip()
         tweet_url = entry.get("url", f"https://x.com/{screen_name}/status/{tweet_id}").split("?")[0]
         badge = entry.get("badge", {})
@@ -565,15 +565,15 @@ async def run_hashtag_check():
             embed.set_image(url=media_url)
         await channel.send(embeds=[embed])
 
-    save_json(HASHTAG_SEEN_PATH, new_seen)
+    save_json(monitor["seen_path"], new_seen)
     if is_first:
-        print(f"[hashtag] 初回: {len(new_seen)}件を既読としてスキップ")
+        print(f"[hashtag] 初回({monitor['queries'][0]}): {len(new_seen)}件をスキップ")
 
 async def hashtag_monitor_loop():
     await bot.wait_until_ready()
     while not bot.is_closed():
         try:
-            await run_hashtag_check()
+            await asyncio.gather(*[run_hashtag_check(m) for m in HASHTAG_MONITORS])
         except Exception as e:
             print(f"[hashtag] エラー: {e}")
         await asyncio.sleep(INTERVAL_SEC)
