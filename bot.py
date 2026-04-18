@@ -480,6 +480,7 @@ async def run_space_check():
         text = clean_text(entry.get("displayText", ""))
         for u in entry.get("urls", []):
             text = text.replace(u.get("url", ""), "").strip()
+        text = _re.sub(r'https?://t\.co/\S+', '', text).strip()
         badge = entry.get("badge", {})
         color = 0x1DA1F2 if badge.get("type") == "blue" else 0xDBAB00 if badge.get("type") == "business" else 0x5865F2
 
@@ -540,7 +541,9 @@ async def run_hashtag_check():
         text = clean_text(entry.get("displayText", ""))
         for u in entry.get("urls", []):
             text = text.replace(u.get("url", ""), "").strip()
-        tweet_url = entry.get("url", f"https://x.com/{screen_name}/status/{tweet_id}")
+        # t.coが残っている場合も除去
+        text = _re.sub(r'https?://t\.co/\S+', '', text).strip()
+        tweet_url = entry.get("url", f"https://x.com/{screen_name}/status/{tweet_id}").split("?")[0]
         badge = entry.get("badge", {})
         color = 0x1DA1F2 if badge.get("type") == "blue" else 0xDBAB00 if badge.get("type") == "business" else 0x5865F2
 
