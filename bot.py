@@ -34,6 +34,7 @@ HASHTAG_MONITORS = [
     {"queries": ["#新参ヒカマー", "#新人ヒカマー", "#ヒカマーズ馴れ合い"], "channel_id": 1494937230970458313, "seen_path": Path("data/hashtag_seen.json")},
     {"queries": ["#ヒカマーズアルカイダ"],                                  "channel_id": 1494937269079900265, "seen_path": Path("data/hashtag_alkaida_seen.json")},
     {"queries": ["#ヒカマーAI生成"],                                        "channel_id": 1494937304932945990, "seen_path": Path("data/hashtag_ai_seen.json")},
+    {"queries": ["#ホモランチ", "#ヒカマーズ飯", "#ヒカマーズランチ", "#ヒカマー飯", "#ヒカマーズモーニング", "#ホモディナー", "#小川泰平のわくわくラーメン刑事"], "channel_id": 1494941977576210563, "seen_path": Path("data/hashtag_food_seen.json")},
 ]
 INTERVAL_SEC       = 5 * 60
 COOLDOWN_SEC       = 30 * 60
