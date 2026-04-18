@@ -26,10 +26,13 @@ OAUTH_URL = (
 
 TWITTER_CHANNEL_ID = int(os.environ.get("TWITTER_CHANNEL_ID", "1494904804533600326"))
 SPACE_CHANNEL_ID   = int(os.environ.get("SPACE_CHANNEL_ID", "1494905257510047868"))
+HASHTAG_CHANNEL_ID = int(os.environ.get("HASHTAG_CHANNEL_ID", "1494937230970458313"))
 HANDLE_TXT         = Path(os.environ.get("HANDLE_TXT", r"data/handle.txt"))
 STATE_PATH         = Path("data/state.json")
 COOLDOWNS_PATH     = Path("data/cooldowns.json")
 SPACE_SEEN_PATH    = Path("data/space_seen.json")
+HASHTAG_SEEN_PATH  = Path("data/hashtag_seen.json")
+HASHTAG_QUERIES    = ["#新参ヒカマー", "#新人ヒカマー", "#ヒカマーズ馴れ合い"]
 INTERVAL_SEC       = 5 * 60
 COOLDOWN_SEC       = 30 * 60
 FX_RETRIES         = max(1, int(os.environ.get("FXTWITTER_FETCH_RETRIES", 5)))
@@ -508,6 +511,63 @@ async def space_monitor_loop():
             print(f"[space] エラー: {e}")
         await asyncio.sleep(INTERVAL_SEC)
 
+async def run_hashtag_check():
+    seen = load_json(HASHTAG_SEEN_PATH)
+    is_first = not seen
+    channel = bot.get_channel(HASHTAG_CHANNEL_ID)
+    new_seen = dict(seen)
+
+    async with aiohttp.ClientSession() as session:
+        async def fetch_hashtag(tag):
+            q = _urlparse.quote(tag)
+            url = f"https://search.yahoo.co.jp/realtime/api/v1/pagination?p={q}&md=t&results=40"
+            try:
+                async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
+                    if res.status != 200:
+                        return []
+                    j = await res.json(content_type=None)
+                    return j.get("timeline", {}).get("entry", [])
+            except Exception:
+                return []
+
+        results = await asyncio.gather(*[fetch_hashtag(t) for t in HASHTAG_QUERIES])
+
+    for entries in results:
+        for entry in entries:
+            tweet_id = entry.get("id", "")
+            if not tweet_id or tweet_id in new_seen:
+                continue
+            new_seen[tweet_id] = True
+            if is_first or not channel:
+                continue
+
+            name = entry.get("name", entry.get("screenName", ""))
+            screen_name = entry.get("screenName", "")
+            avatar = entry.get("profileImage", "")
+            text = clean_text(entry.get("displayText", ""))
+            for u in entry.get("urls", []):
+                text = text.replace(u.get("url", ""), "").strip()
+            tweet_url = entry.get("url", f"https://x.com/{screen_name}/status/{tweet_id}")
+            badge = entry.get("badge", {})
+            color = 0x1DA1F2 if badge.get("type") == "blue" else 0xDBAB00 if badge.get("type") == "business" else 0x5865F2
+
+            embed = discord.Embed(description=text, color=color, url=tweet_url)
+            embed.set_author(name=f"{name} (@{screen_name})", icon_url=avatar, url=f"https://x.com/{screen_name}")
+            await channel.send(embeds=[embed])
+
+    save_json(HASHTAG_SEEN_PATH, new_seen)
+    if is_first:
+        print(f"[hashtag] 初回: {len(new_seen)}件を既読としてスキップ")
+
+async def hashtag_monitor_loop():
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            await run_hashtag_check()
+        except Exception as e:
+            print(f"[hashtag] エラー: {e}")
+        await asyncio.sleep(INTERVAL_SEC)
+
 # ── スラッシュコマンド ─────────────────────────────────────
 
 @bot.tree.command(name="ping", description="Botの応答速度を確認")
@@ -577,6 +637,7 @@ async def on_ready():
     threading.Thread(target=run_flask, daemon=True).start()
     bot.loop.create_task(twitter_monitor_loop())
     bot.loop.create_task(space_monitor_loop())
+    bot.loop.create_task(hashtag_monitor_loop())
 
 
 bot.run(TOKEN)
