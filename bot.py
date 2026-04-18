@@ -414,8 +414,8 @@ async def run_check():
 
 # ── スペース監視機能 ──────────────────────────────────────
 
-import re as _re
 import urllib.parse as _urlparse
+import re as _re
 
 async def fetch_yahoo_spaces(session: aiohttp.ClientSession, handles: list[str]) -> list[dict]:
     """handle.txtのユーザーを50件ずつ分割してYahoo APIで検索し、スペースURLを含むツイートを返す"""
@@ -441,11 +441,6 @@ async def fetch_yahoo_spaces(session: aiohttp.ClientSession, handles: list[str])
         results.extend(entries)
     return results
 
-def extract_space_url(text: str) -> str | None:
-    """ツイート本文からスペースURLを抽出（t.co短縮URLは除く）"""
-    m = _re.search(r'https?://(?:x|twitter)\.com/i/spaces/\w+', text)
-    return m.group(0) if m else None
-
 def clean_text(text: str) -> str:
     return _re.sub(r'\tSTART\t|\tEND\t', '', text).strip()
 
@@ -465,15 +460,12 @@ async def run_space_check():
         tweet_id = entry.get("id", "")
         if not tweet_id or tweet_id in seen:
             continue
-        # t.co URLしかない場合はスキップ（スペースURLが本文に直接ない）
-        space_url = extract_space_url(clean_text(entry.get("displayText", "")))
-        if not space_url:
-            # urlsフィールドのexpandedUrlから探す
-            for u in entry.get("urls", []):
-                eu = u.get("expandedUrl", "")
-                if "/i/spaces/" in eu:
-                    space_url = eu
-                    break
+        space_url = None
+        for u in entry.get("urls", []):
+            eu = u.get("expandedUrl", "")
+            if "/i/spaces/" in eu:
+                space_url = eu
+                break
         if not space_url:
             new_seen[tweet_id] = True
             continue
