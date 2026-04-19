@@ -72,6 +72,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 flask_app = Flask(__name__)
 
+@flask_app.route("/")
+def index():
+    return redirect("https://discord.com/invite/26U6r5xMBx")
+
 @flask_app.route("/favicon.ico")
 def favicon():
     svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
