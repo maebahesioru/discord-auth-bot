@@ -871,6 +871,7 @@ async def on_ready():
     bot.add_view(AuthView())
     bot.add_view(RoleMenuView())
     await bot.tree.sync()
+    await bot.tree.sync(guild=discord.Object(id=MY_GUILD_ID))
     print(f"起動: {bot.user}")
     threading.Thread(target=run_flask, daemon=True).start()
     bot.loop.create_task(twitter_monitor_loop())
