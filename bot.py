@@ -589,6 +589,7 @@ def clean_text(text: str) -> str:
     return _re.sub(r'\tSTART\t|\tEND\t', '', text).strip()
 
 async def run_space_check():
+    print(f"[space] チェック開始", flush=True)
     handles = [l.strip() for l in HANDLE_TXT.read_text("utf-8").splitlines() if l.strip()]
     seen = load_json(SPACE_SEEN_PATH)
     is_first = not seen
@@ -654,7 +655,8 @@ async def space_monitor_loop():
         try:
             await run_space_check()
         except Exception as e:
-            print(f"[space] エラー: {e}")
+            import traceback
+            print(f"[space] エラー: {e}\n{traceback.format_exc()}", flush=True)
         await asyncio.sleep(INTERVAL_SEC)
 
 async def run_hashtag_check(monitor: dict):
