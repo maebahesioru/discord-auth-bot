@@ -122,7 +122,8 @@ def callback():
 <body><div><p style="font-size:2rem">⚠️</p><p>ロール付与失敗: {res.status_code}</p></div></body></html>""", 500
 
 def run_flask():
-    flask_app.run(host="0.0.0.0", port=5000)
+    from waitress import serve
+    serve(flask_app, host="0.0.0.0", port=5000)
 
 # ── Discord認証ボタン ─────────────────────────────────────
 
