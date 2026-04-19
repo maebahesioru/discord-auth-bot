@@ -838,7 +838,7 @@ async def run_hikamani_watcher():
     watcher = discord.Client(intents=discord.Intents(members=True, guilds=True))
 
     async def revoke_role(member_id: int):
-        my_guild = watcher.get_guild(int(MY_GUILD_ID)) or await watcher.fetch_guild(int(MY_GUILD_ID))
+        my_guild = bot.get_guild(int(MY_GUILD_ID))
         if not my_guild:
             return
         try:
