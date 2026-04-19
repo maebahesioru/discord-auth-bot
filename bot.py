@@ -837,26 +837,43 @@ async def run_hikamani_watcher():
         return
     watcher = discord.Client(intents=discord.Intents(members=True, guilds=True))
 
-    @watcher.event
-    async def on_member_join(member: discord.Member):
-        if member.guild.id != int(HIKAMANI_GUILD_ID):
-            return
-        # こちらのサーバーでロールを持っているか確認して剥奪
+    async def revoke_role(member_id: int):
         my_guild = watcher.get_guild(int(MY_GUILD_ID)) or await watcher.fetch_guild(int(MY_GUILD_ID))
         if not my_guild:
             return
         try:
-            my_member = await my_guild.fetch_member(member.id)
+            my_member = await my_guild.fetch_member(member_id)
         except discord.NotFound:
             return
         role = my_guild.get_role(int(ROLE_ID))
         if role and role in my_member.roles:
-            await my_member.remove_roles(role, reason="ヒカマニーズ鯖に再加入")
-            print(f"[watcher] {member} がヒカマニーズ鯖に参加 → ロール剥奪")
+            await my_member.remove_roles(role, reason="ヒカマニーズ鯖に参加")
+            print(f"[watcher] {member_id} → ロール剥奪")
             try:
                 await my_member.send("ヒカマニーズ鯖に参加しているため、認証ロールを剥奪しました。")
             except discord.Forbidden:
                 pass
+
+    @watcher.event
+    async def on_member_join(member: discord.Member):
+        if member.guild.id != int(HIKAMANI_GUILD_ID):
+            return
+        await revoke_role(member.id)
+
+    @watcher.event
+    async def on_ready():
+        print(f"[watcher] 起動: {watcher.user}")
+        # 起動時に全メンバーをチェック
+        while not watcher.is_closed():
+            try:
+                hikamani_guild = watcher.get_guild(int(HIKAMANI_GUILD_ID))
+                if hikamani_guild:
+                    async for member in hikamani_guild.fetch_members(limit=None):
+                        await revoke_role(member.id)
+                    print(f"[watcher] 定期チェック完了")
+            except Exception as e:
+                print(f"[watcher] エラー: {e}")
+            await asyncio.sleep(INTERVAL_SEC)
 
     await watcher.start(HIKAMANI_WATCH_TOKEN)
 
