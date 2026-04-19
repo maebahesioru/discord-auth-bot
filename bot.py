@@ -72,6 +72,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 flask_app = Flask(__name__)
 
+@flask_app.route("/favicon.ico")
+def favicon():
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="16" fill="#5865F2"/>
+  <text x="16" y="22" font-size="18" text-anchor="middle" fill="white" font-family="sans-serif">H</text>
+</svg>'''
+    from flask import Response
+    return Response(svg, mimetype="image/svg+xml")
+
 @flask_app.route("/auth")
 def auth():
     return redirect(OAUTH_URL)
