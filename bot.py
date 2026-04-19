@@ -39,6 +39,7 @@ HASHTAG_MONITORS = [
     {"queries": ["#ヒカマーズアルカイダ"],                                  "channel_id": 1494937269079900265, "seen_path": Path("data/hashtag_alkaida_seen.json")},
     {"queries": ["#ヒカマーAI生成"],                                        "channel_id": 1494937304932945990, "seen_path": Path("data/hashtag_ai_seen.json")},
     {"queries": ["#ホモランチ", "#ヒカマーズ飯", "#ヒカマーズランチ", "#ヒカマー飯", "#ヒカマーズモーニング", "#ホモディナー", "#小川泰平のわくわくラーメン刑事"], "channel_id": 1494941977576210563, "seen_path": Path("data/hashtag_food_seen.json")},
+    {"queries": ["#ヒカマーズマイクラ"], "channel_id": 1493935740986327130, "seen_path": Path("data/hashtag_mc_seen.json")},
 ]
 INTERVAL_SEC       = 5 * 60
 COOLDOWN_SEC       = 30 * 60
@@ -181,6 +182,7 @@ NOTIFY_ROLE_MAP = {
     1494937269079900265: 1494957461642416178,  # ヒカマーズアル〇イダ情報
     1494937304932945990: 1494957723354140775,  # ヒカマーAI生成情報
     1494941977576210563: 1494957511151714376,  # ヒカマー飯情報
+    1493935740986327130: 1494890135727112313,  # ヒカマーズマイクラ
 }
 
 class RoleSelect(discord.ui.Select):
