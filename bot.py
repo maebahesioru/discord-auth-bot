@@ -596,6 +596,7 @@ async def run_space_check():
 
     async with aiohttp.ClientSession() as session:
         entries = await fetch_yahoo_spaces(session, handles)
+    print(f"[space] API取得完了: {len(entries)}件", flush=True)
 
     channel = bot.get_channel(SPACE_CHANNEL_ID)
     if not channel and not is_first:
@@ -636,7 +637,9 @@ async def run_space_check():
 
     save_json(SPACE_SEEN_PATH, new_seen)
     if is_first:
-        print(f"[space] 初回: {len(new_seen)}件を既読としてスキップ")
+        print(f"[space] 初回: {len(new_seen)}件を既読としてスキップ", flush=True)
+    else:
+        print(f"[space] チェック完了", flush=True)
 
 async def twitter_monitor_loop():
     global _next_check
