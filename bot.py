@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TOKEN           = os.environ["DISCORD_TOKEN"]
+HIKAMANI_WATCH_TOKEN = os.environ.get("HIKAMANI_WATCH_TOKEN", "")
 CLIENT_ID       = os.environ["DISCORD_CLIENT_ID"]
 CLIENT_SECRET   = os.environ["DISCORD_CLIENT_SECRET"]
 AUTH_CHANNEL_ID = 1403012659032625203
@@ -829,4 +830,36 @@ async def on_ready():
     bot.loop.create_task(hashtag_monitor_loop())
 
 
-bot.run(TOKEN)
+# ── ヒカマニーズ鯖監視Bot（再加入検知→ロール剥奪） ────────
+
+async def run_hikamani_watcher():
+    if not HIKAMANI_WATCH_TOKEN:
+        return
+    watcher = discord.Client(intents=discord.Intents(members=True, guilds=True))
+
+    @watcher.event
+    async def on_member_join(member: discord.Member):
+        if member.guild.id != int(HIKAMANI_GUILD_ID):
+            return
+        # こちらのサーバーでロールを持っているか確認して剥奪
+        my_guild = watcher.get_guild(int(MY_GUILD_ID)) or await watcher.fetch_guild(int(MY_GUILD_ID))
+        if not my_guild:
+            return
+        try:
+            my_member = await my_guild.fetch_member(member.id)
+        except discord.NotFound:
+            return
+        role = my_guild.get_role(int(ROLE_ID))
+        if role and role in my_member.roles:
+            await my_member.remove_roles(role, reason="ヒカマニーズ鯖に再加入")
+            print(f"[watcher] {member} がヒカマニーズ鯖に参加 → ロール剥奪")
+
+    await watcher.start(HIKAMANI_WATCH_TOKEN)
+
+async def main():
+    await asyncio.gather(
+        bot.start(TOKEN),
+        run_hikamani_watcher(),
+    )
+
+asyncio.run(main())
