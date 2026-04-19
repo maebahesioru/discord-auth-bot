@@ -853,6 +853,10 @@ async def run_hikamani_watcher():
         if role and role in my_member.roles:
             await my_member.remove_roles(role, reason="ヒカマニーズ鯖に再加入")
             print(f"[watcher] {member} がヒカマニーズ鯖に参加 → ロール剥奪")
+            try:
+                await my_member.send("ヒカマニーズ鯖に参加しているため、認証ロールを剥奪しました。")
+            except discord.Forbidden:
+                pass
 
     await watcher.start(HIKAMANI_WATCH_TOKEN)
 
