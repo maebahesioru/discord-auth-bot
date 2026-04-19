@@ -849,7 +849,8 @@ async def on_ready():
 async def run_hikamani_watcher():
     if not HIKAMANI_WATCH_TOKEN:
         return
-    watcher = discord.Client(intents=discord.Intents(members=True, guilds=True))
+    watcher = discord.Client(intents=discord.Intents(members=True, guilds=True),
+                             status=discord.Status.invisible)
 
     async def revoke_role(member_id: int):
         my_guild = bot.get_guild(int(MY_GUILD_ID))
