@@ -775,7 +775,20 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 
 # ── スラッシュコマンド ─────────────────────────────────────
 
-@bot.tree.command(name="allowlist", description="ヒカマニーズ鯖参加者の認証を特別許可/解除する")
+@bot.tree.command(name="checkuser", description="指定ユーザーがヒカマニーズ鯖を抜けているか確認")
+@app_commands.describe(user="確認するユーザー")
+@app_commands.default_permissions(administrator=True)
+async def slash_checkuser(interaction: discord.Interaction, user: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    hikamani_guild = hikamani_watcher.get_guild(int(HIKAMANI_GUILD_ID)) if hikamani_watcher else None
+    if not hikamani_guild:
+        await interaction.followup.send("watcherが起動していないか、ヒカマニーズ鯖に参加していません。", ephemeral=True)
+        return
+    try:
+        await hikamani_guild.fetch_member(user.id)
+        await interaction.followup.send(f"{user.mention} はヒカマニーズ鯖に**参加中**です。", ephemeral=True)
+    except discord.NotFound:
+        await interaction.followup.send(f"{user.mention} はヒカマニーズ鯖を**抜けています**。", ephemeral=True)
 @app_commands.describe(user="対象ユーザー", action="add=許可追加 / remove=許可解除")
 @app_commands.choices(action=[
     app_commands.Choice(name="add", value="add"),
@@ -866,11 +879,15 @@ async def on_ready():
 
 # ── ヒカマニーズ鯖監視Bot（再加入検知→ロール剥奪） ────────
 
+hikamani_watcher: discord.Client | None = None
+
 async def run_hikamani_watcher():
+    global hikamani_watcher
     if not HIKAMANI_WATCH_TOKEN:
         return
     watcher = discord.Client(intents=discord.Intents(members=True, guilds=True),
                              status=discord.Status.invisible)
+    hikamani_watcher = watcher
 
     async def revoke_role(member_id: int):
         my_guild = bot.get_guild(int(MY_GUILD_ID))
