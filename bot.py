@@ -108,7 +108,7 @@ def callback():
     user_id = req_lib.get("https://discord.com/api/users/@me", headers=headers).json()["id"]
     guild_ids = [g["id"] for g in req_lib.get("https://discord.com/api/users/@me/guilds", headers=headers).json()]
 
-    if HIKAMANI_GUILD_ID in guild_ids:
+    if HIKAMANI_GUILD_ID in guild_ids and user_id not in load_json(Path("data/allowlist.json")):
         return """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#2b2d31;color:#fff}div{text-align:center;padding:2rem}</style></head>
 <body><div><p style="font-size:2rem">❌</p><p>ヒカマニーズ鯖に参加しているため認証できません。</p>
@@ -775,7 +775,25 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 
 # ── スラッシュコマンド ─────────────────────────────────────
 
-@bot.tree.command(name="ping", description="Botの応答速度を確認")
+@bot.tree.command(name="allowlist", description="ヒカマニーズ鯖参加者の認証を特別許可/解除する")
+@app_commands.describe(user="対象ユーザー", action="add=許可追加 / remove=許可解除")
+@app_commands.choices(action=[
+    app_commands.Choice(name="add", value="add"),
+    app_commands.Choice(name="remove", value="remove"),
+])
+@app_commands.default_permissions(administrator=True)
+async def slash_allowlist(interaction: discord.Interaction, user: discord.Member, action: app_commands.Choice[str]):
+    path = Path("data/allowlist.json")
+    data = load_json(path)
+    uid = str(user.id)
+    if action.value == "add":
+        data[uid] = user.display_name
+        save_json(path, data)
+        await interaction.response.send_message(f"✅ {user.mention} を許可リストに追加しました。", ephemeral=True)
+    else:
+        data.pop(uid, None)
+        save_json(path, data)
+        await interaction.response.send_message(f"✅ {user.mention} を許可リストから削除しました。", ephemeral=True)
 async def slash_ping(interaction: discord.Interaction):
     await interaction.response.send_message(f"🏓 Pong! {round(bot.latency * 1000)}ms")
 
@@ -863,7 +881,7 @@ async def run_hikamani_watcher():
         except discord.NotFound:
             return
         role = my_guild.get_role(int(ROLE_ID))
-        if role and role in my_member.roles:
+        if role and role in my_member.roles and str(member_id) not in load_json(Path("data/allowlist.json")):
             await my_member.remove_roles(role, reason="ヒカマニーズ鯖に参加")
             print(f"[watcher] {member_id} → ロール剥奪")
             try:
