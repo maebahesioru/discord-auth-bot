@@ -790,6 +790,8 @@ async def slash_checkuser(interaction: discord.Interaction, user: discord.Member
         await interaction.followup.send(f"{user.mention} はヒカマニーズ鯖に**参加中**です。", ephemeral=True)
     except discord.NotFound:
         await interaction.followup.send(f"{user.mention} はヒカマニーズ鯖を**抜けています**。", ephemeral=True)
+
+@bot.tree.command(name="allowlist", description="ヒカマニーズ鯖参加者の認証を特別許可/解除する")
 @app_commands.describe(user="対象ユーザー", action="add=許可追加 / remove=許可解除")
 @app_commands.choices(action=[
     app_commands.Choice(name="add", value="add"),
