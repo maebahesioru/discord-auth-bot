@@ -526,6 +526,7 @@ async def run_check():
                     print(f"[handle] {username} → {new_handle} に更新")
             elif not merged.get("alive"):
                 all_changes.append({"text": f"**{username}** 🆕 新規追加（ステータス: 消えています）"})
+            # prevなし & alive=True → 新規追加のためスキップ（初回状態保存のみ）
 
     if not is_first:
         prev_alive = sum(1 for s in prev_state.values() if s.get("alive"))
