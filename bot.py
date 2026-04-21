@@ -946,3 +946,173 @@ async def main():
     )
 
 asyncio.run(main())
+
+
+# ── HKM Discord特典 ──────────────────────────────────────
+
+HKM_API_URL = os.environ.get("HKM_API_URL", "https://hikakinmaniacoin.hikamer.f5.si")
+HKM_API_KEY = os.environ.get("HKM_API_KEY", "")
+
+# ロールID設定（環境変数で上書き可能）
+HKM_BOOSTER_ROLE_ID = int(os.environ.get("HKM_BOOSTER_ROLE_ID", "0"))  # ブースター相当ロール
+HKM_VIP_ROLE_ID     = int(os.environ.get("HKM_VIP_ROLE_ID", "0"))      # VIPチャンネルアクセスロール
+HKM_COLOR_ROLE_PREFIX = "hkm_color_"  # 名前色ロールのプレフィックス
+
+async def check_hkm_purchase(discord_id: str, slug: str) -> bool:
+    """HKMの購入確認API呼び出し"""
+    if not HKM_API_KEY:
+        return False
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{HKM_API_URL}/api/external/check-purchase",
+                params={"discordId": discord_id, "slug": slug},
+                headers={"x-api-key": HKM_API_KEY},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as res:
+                if res.status == 200:
+                    data = await res.json()
+                    return data.get("active", False)
+    except Exception as e:
+        print(f"[HKM] check_purchase error: {e}")
+    return False
+
+@bot.tree.command(name="hkm_booster", description="HKMブースター権限を有効化する（3,000 HKM購入後）")
+async def slash_hkm_booster(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    discord_id = str(interaction.user.id)
+    active = await check_hkm_purchase(discord_id, "discord-booster")
+    if not active:
+        await interaction.followup.send(
+            f"❌ ブースター権限が見つかりません。\n"
+            f"[ヒカマニコインショップ]({HKM_API_URL}/shop) で購入してください（3,000 HKM）",
+            ephemeral=True
+        )
+        return
+    guild = interaction.guild
+    if not guild or not HKM_BOOSTER_ROLE_ID:
+        await interaction.followup.send("❌ ロールが設定されていません。管理者に連絡してください。", ephemeral=True)
+        return
+    role = guild.get_role(HKM_BOOSTER_ROLE_ID)
+    if not role:
+        await interaction.followup.send("❌ ブースターロールが見つかりません。", ephemeral=True)
+        return
+    try:
+        await interaction.user.add_roles(role, reason="HKM ブースター権限")
+        await interaction.followup.send(f"✅ ブースター権限（{role.name}）を付与しました！", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.followup.send("❌ ロール付与に失敗しました（権限不足）", ephemeral=True)
+
+@bot.tree.command(name="hkm_vip", description="HKM VIPチャンネルを解放する（5,000 HKM/月購入後）")
+async def slash_hkm_vip(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    discord_id = str(interaction.user.id)
+    active = await check_hkm_purchase(discord_id, "discord-vip")
+    if not active:
+        await interaction.followup.send(
+            f"❌ VIPプランが見つかりません。\n"
+            f"[ヒカマニコインショップ]({HKM_API_URL}/shop) で購入してください（5,000 HKM/月）",
+            ephemeral=True
+        )
+        return
+    guild = interaction.guild
+    if not guild or not HKM_VIP_ROLE_ID:
+        await interaction.followup.send("❌ VIPロールが設定されていません。管理者に連絡してください。", ephemeral=True)
+        return
+    role = guild.get_role(HKM_VIP_ROLE_ID)
+    if not role:
+        await interaction.followup.send("❌ VIPロールが見つかりません。", ephemeral=True)
+        return
+    try:
+        await interaction.user.add_roles(role, reason="HKM VIPチャンネル")
+        await interaction.followup.send(f"✅ VIPチャンネル（{role.name}）へのアクセスを付与しました！", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.followup.send("❌ ロール付与に失敗しました（権限不足）", ephemeral=True)
+
+@bot.tree.command(name="hkm_color", description="HKM名前色を変更する（1,000 HKM/月購入後）")
+@app_commands.describe(color="カラーコード（例: #ff0000）")
+async def slash_hkm_color(interaction: discord.Interaction, color: str):
+    await interaction.response.defer(ephemeral=True)
+    discord_id = str(interaction.user.id)
+    active = await check_hkm_purchase(discord_id, "discord-namecolor")
+    if not active:
+        await interaction.followup.send(
+            f"❌ 名前色変更プランが見つかりません。\n"
+            f"[ヒカマニコインショップ]({HKM_API_URL}/shop) で購入してください（1,000 HKM/月）",
+            ephemeral=True
+        )
+        return
+    # カラーコード検証
+    import re as _re2
+    m = _re2.match(r'^#?([0-9a-fA-F]{6})$', color.strip())
+    if not m:
+        await interaction.followup.send("❌ 無効なカラーコードです。例: #ff0000", ephemeral=True)
+        return
+    hex_color = int(m.group(1), 16)
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("❌ サーバー内で実行してください。", ephemeral=True)
+        return
+    # 既存の色ロールを削除
+    old_roles = [r for r in interaction.user.roles if r.name.startswith(HKM_COLOR_ROLE_PREFIX)]
+    if old_roles:
+        await interaction.user.remove_roles(*old_roles, reason="HKM 名前色変更")
+        for r in old_roles:
+            try:
+                await r.delete(reason="HKM 名前色ロール削除")
+            except Exception:
+                pass
+    # 新しい色ロールを作成・付与
+    try:
+        new_role = await guild.create_role(
+            name=f"{HKM_COLOR_ROLE_PREFIX}{discord_id}",
+            color=discord.Color(hex_color),
+            reason="HKM 名前色変更",
+        )
+        # ロールを適切な位置に移動（Botロールの直下）
+        bot_member = guild.get_member(bot.user.id)
+        if bot_member and bot_member.top_role.position > 1:
+            await new_role.edit(position=bot_member.top_role.position - 1)
+        await interaction.user.add_roles(new_role, reason="HKM 名前色変更")
+        await interaction.followup.send(f"✅ 名前色を `#{m.group(1)}` に変更しました！", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.followup.send("❌ ロール作成に失敗しました（権限不足）", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ エラー: {e}", ephemeral=True)
+
+@bot.tree.command(name="hkm_sync", description="HKM特典を一括同期する（購入済みの特典を自動付与）")
+async def slash_hkm_sync(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    discord_id = str(interaction.user.id)
+    results = []
+
+    # ブースター
+    if HKM_BOOSTER_ROLE_ID and await check_hkm_purchase(discord_id, "discord-booster"):
+        role = interaction.guild.get_role(HKM_BOOSTER_ROLE_ID) if interaction.guild else None
+        if role and role not in interaction.user.roles:
+            try:
+                await interaction.user.add_roles(role)
+                results.append(f"✅ ブースター権限付与")
+            except Exception:
+                results.append(f"❌ ブースター権限付与失敗")
+        elif role:
+            results.append(f"✓ ブースター権限（付与済み）")
+
+    # VIP
+    if HKM_VIP_ROLE_ID and await check_hkm_purchase(discord_id, "discord-vip"):
+        role = interaction.guild.get_role(HKM_VIP_ROLE_ID) if interaction.guild else None
+        if role and role not in interaction.user.roles:
+            try:
+                await interaction.user.add_roles(role)
+                results.append(f"✅ VIPチャンネル付与")
+            except Exception:
+                results.append(f"❌ VIPチャンネル付与失敗")
+        elif role:
+            results.append(f"✓ VIPチャンネル（付与済み）")
+
+    if not results:
+        results.append("購入済みのDiscord特典が見つかりませんでした。")
+        results.append(f"[ショップで購入する]({HKM_API_URL}/shop)")
+
+    await interaction.followup.send("\n".join(results), ephemeral=True)
+
