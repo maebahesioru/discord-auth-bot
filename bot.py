@@ -735,6 +735,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     # 通話チャンネルから退出
     if before.channel and before.channel != after.channel:
         ch = before.channel
+        # HKMセッション終了
+        _vc_hkm_sessions.pop(member.id, None)
         session = _vc_sessions.get(ch.id)
         if session:
             session["members"].discard(member.id)
@@ -778,6 +780,13 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             if member.id not in session["all_members"]:
                 session["all_members"].add(member.id)
                 session["all_members_names"].append(member.display_name)
+        # HKMセッション開始
+        if not member.bot:
+            _vc_hkm_sessions[member.id] = {
+                "channel_id": ch.id,
+                "start": now,
+                "last_reward": now,
+            }
 
 # ── スラッシュコマンド ─────────────────────────────────────
 
@@ -884,6 +893,7 @@ async def on_ready():
     bot.loop.create_task(twitter_monitor_loop())
     bot.loop.create_task(space_monitor_loop())
     bot.loop.create_task(hashtag_monitor_loop())
+    bot.loop.create_task(vc_hkm_reward_loop())
 
 
 # ── ヒカマニーズ鯖監視Bot（再加入検知→ロール剥奪） ────────
@@ -1115,4 +1125,167 @@ async def slash_hkm_sync(interaction: discord.Interaction):
         results.append(f"[ショップで購入する]({HKM_API_URL}/shop)")
 
     await interaction.followup.send("\n".join(results), ephemeral=True)
+
+
+
+# ── HKM ウォレットコマンド ────────────────────────────────
+
+async def hkm_api_get(path: str, params: dict = {}) -> dict | None:
+    """HKM APIのGETリクエスト"""
+    if not HKM_API_KEY:
+        return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{HKM_API_URL}{path}",
+                params=params,
+                headers={"x-api-key": HKM_API_KEY},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as res:
+                if res.status == 200:
+                    return await res.json()
+    except Exception as e:
+        print(f"[HKM API] GET {path} error: {e}")
+    return None
+
+async def hkm_api_post(path: str, body: dict) -> dict | None:
+    """HKM APIのPOSTリクエスト"""
+    if not HKM_API_KEY:
+        return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{HKM_API_URL}{path}",
+                json=body,
+                headers={"x-api-key": HKM_API_KEY, "Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as res:
+                return await res.json()
+    except Exception as e:
+        print(f"[HKM API] POST {path} error: {e}")
+    return None
+
+@bot.tree.command(name="hkm_balance", description="HKM残高を確認する")
+async def slash_hkm_balance(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    discord_id = str(interaction.user.id)
+    data = await hkm_api_get("/api/external", {"discordId": discord_id})
+    if data is None:
+        await interaction.followup.send("❌ HKM APIに接続できませんでした。", ephemeral=True)
+        return
+    balance = int(data.get("balance", 0))
+    embed = discord.Embed(title="💰 HKM残高", color=0xF59E0B)
+    embed.add_field(name="残高", value=f"**{balance:,} HKM**", inline=False)
+    embed.add_field(name="円換算", value=f"約 {balance // 100:,} 円相当", inline=False)
+    embed.set_footer(text=f"ウォレット詳細: {HKM_API_URL}/dashboard")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="hkm_send", description="HKMを送金する（贈与）")
+@app_commands.describe(
+    recipient="送金先ユーザー",
+    amount="送金額（HKM）",
+    memo="メモ（任意）",
+)
+async def slash_hkm_send(interaction: discord.Interaction, recipient: discord.Member, amount: int, memo: str = ""):
+    await interaction.response.defer(ephemeral=True)
+    if amount <= 0:
+        await interaction.followup.send("❌ 送金額は1以上にしてください。", ephemeral=True)
+        return
+    if recipient.id == interaction.user.id:
+        await interaction.followup.send("❌ 自分自身には送金できません。", ephemeral=True)
+        return
+
+    # 送金先のユーザーIDを取得
+    sender_discord_id = str(interaction.user.id)
+    recipient_discord_id = str(recipient.id)
+
+    # 送金者のHKMユーザーIDを取得
+    sender_data = await hkm_api_get("/api/external", {"discordId": sender_discord_id})
+    if not sender_data:
+        await interaction.followup.send("❌ 送金者のHKMアカウントが見つかりません。", ephemeral=True)
+        return
+
+    # 送金先のHKMユーザーIDを取得
+    recipient_data = await hkm_api_get("/api/external", {"discordId": recipient_discord_id})
+    if not recipient_data:
+        await interaction.followup.send(f"❌ {recipient.display_name} のHKMアカウントが見つかりません。", ephemeral=True)
+        return
+
+    # 確認メッセージ（ephemeralでないpublicメッセージ）
+    confirm_embed = discord.Embed(
+        title="💸 送金確認",
+        description=f"{interaction.user.mention} → {recipient.mention}\n**{amount:,} HKM**{f' ({memo})' if memo else ''}",
+        color=0xF59E0B,
+    )
+    confirm_embed.set_footer(text="手数料1%が差し引かれます")
+    await interaction.followup.send(embed=confirm_embed, ephemeral=True)
+
+    # 実際の送金はWebサイトから行うよう案内（Bot経由の送金はセキュリティリスクがあるため）
+    await interaction.followup.send(
+        f"送金はウェブサイトから行ってください: {HKM_API_URL}/dashboard\n"
+        f"送金先ユーザーID: `{recipient_discord_id}` をコピーして使用してください。",
+        ephemeral=True,
+    )
+
+@bot.tree.command(name="hkm_info", description="HKMについて確認する")
+async def slash_hkm_info(interaction: discord.Interaction):
+    embed = discord.Embed(title="🪙 ヒカマニコイン (HKM)", color=0xF59E0B)
+    embed.description = "ヒカマニ界隈の公式サイト内ポイント。1円 = 100 HKM"
+    embed.add_field(name="ウェブサイト", value=HKM_API_URL, inline=False)
+    embed.add_field(name="貯め方", value=(
+        "• デイリーログイン: 100 HKM/日\n"
+        "• 連続7日ボーナス: +300 HKM\n"
+        "• 連続30日ボーナス: +2,000 HKM\n"
+        "• Discord/Twitter/Google連携: 200〜300 HKM\n"
+        "• 紹介コード: 招待側500/被招待側200 HKM\n"
+        "• VC滞在(2人以上): 10 HKM/時\n"
+        "• LTCで入金"
+    ), inline=False)
+    embed.add_field(name="使いみち", value=(
+        "• ヒカマーズ株・賭けマーケット\n"
+        "• 各サービスProプラン\n"
+        "• Discord特典（ブースター/VIP/名前色）\n"
+        "• 広告掲載・スポンサー"
+    ), inline=False)
+    await interaction.response.send_message(embed=embed)
+
+# ── VC滞在HKMボーナス ─────────────────────────────────────
+
+# {user_id: {"channel_id": int, "start": float, "last_reward": float}}
+_vc_hkm_sessions: dict[int, dict] = {}
+VC_HKM_PER_HOUR = 10
+VC_MIN_MEMBERS = 2  # 2人以上で報酬
+VC_REWARD_INTERVAL = 3600  # 1時間ごとに付与
+
+async def vc_hkm_reward_loop():
+    """1時間ごとにVC滞在ボーナスを付与"""
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        await asyncio.sleep(60)  # 1分ごとにチェック
+        now = time.time()
+        for user_id, session in list(_vc_hkm_sessions.items()):
+            elapsed = now - session["last_reward"]
+            if elapsed < VC_REWARD_INTERVAL:
+                continue
+            # チャンネルの現在の人数確認
+            guild = bot.get_guild(VC_MONITOR_GUILD_ID)
+            if not guild:
+                continue
+            channel = guild.get_channel(session["channel_id"])
+            if not channel or not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                continue
+            member_count = len([m for m in channel.members if not m.bot])
+            if member_count < VC_MIN_MEMBERS:
+                continue
+            # HKM付与
+            discord_id = str(user_id)
+            result = await hkm_api_post("/api/external", {
+                "discordId": discord_id,
+                "amount": str(VC_HKM_PER_HOUR),
+                "action": "grant",
+                "memo": f"VC滞在ボーナス ({channel.name})",
+            })
+            if result and result.get("success"):
+                _vc_hkm_sessions[user_id]["last_reward"] = now
+                print(f"[VC HKM] {discord_id} +{VC_HKM_PER_HOUR} HKM ({channel.name})")
 
