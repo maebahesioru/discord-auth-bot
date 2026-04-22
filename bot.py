@@ -1279,10 +1279,9 @@ async def vc_hkm_reward_loop():
                 continue
             # HKM付与
             discord_id = str(user_id)
-            result = await hkm_api_post("/api/external", {
+            result = await hkm_api_post("/api/external/system-grant", {
                 "discordId": discord_id,
                 "amount": str(VC_HKM_PER_HOUR),
-                "action": "grant",
                 "memo": f"VC滞在ボーナス ({channel.name})",
             })
             if result and result.get("success"):
