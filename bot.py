@@ -108,11 +108,9 @@ def callback():
     user_id = req_lib.get("https://discord.com/api/users/@me", headers=headers).json()["id"]
     guild_ids = [g["id"] for g in req_lib.get("https://discord.com/api/users/@me/guilds", headers=headers).json()]
 
-    if HIKAMANI_GUILD_ID in guild_ids and user_id not in load_json(Path("data/allowlist.json")):
-        return """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#2b2d31;color:#fff}div{text-align:center;padding:2rem}</style></head>
-<body><div><p style="font-size:2rem">❌</p><p>ヒカマニーズ鯖に参加しているため認証できません。</p>
-<p>抜けたくない場合は<a href="https://discord.com/channels/1369976295395426328/1493885237330051112" style="color:#5865f2">こちら</a>で要相談。</p></div></body></html>""", 403
+    # ヒカマニーズ鯖チェック一時解除中
+    # if HIKAMANI_GUILD_ID in guild_ids and user_id not in load_json(Path("data/allowlist.json")):
+    #     return "...", 403
 
     res = req_lib.put(
         f"https://discord.com/api/guilds/{MY_GUILD_ID}/members/{user_id}/roles/{ROLE_ID}",
@@ -909,17 +907,8 @@ async def run_hikamani_watcher():
     hikamani_watcher = watcher
 
     async def revoke_role(member_id: int):
-        my_guild = bot.get_guild(int(MY_GUILD_ID))
-        if not my_guild:
-            return
-        try:
-            my_member = await my_guild.fetch_member(member_id)
-        except discord.NotFound:
-            return
-        role = my_guild.get_role(int(ROLE_ID))
-        if role and role in my_member.roles and str(member_id) not in load_json(Path("data/allowlist.json")):
-            await my_member.remove_roles(role, reason="ヒカマニーズ鯖に参加")
-            print(f"[watcher] {member_id} → ロール剥奪")
+        # ヒカマニーズ鯖チェック一時解除中
+        return
             try:
                 user = await bot.fetch_user(member_id)
                 await user.send("ヒカマニーズ鯖に参加しているため、認証ロールを剥奪しました。")
