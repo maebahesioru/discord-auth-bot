@@ -909,11 +909,6 @@ async def run_hikamani_watcher():
     async def revoke_role(member_id: int):
         # ヒカマニーズ鯖チェック一時解除中
         return
-            try:
-                user = await bot.fetch_user(member_id)
-                await user.send("ヒカマニーズ鯖に参加しているため、認証ロールを剥奪しました。")
-            except (discord.Forbidden, discord.NotFound):
-                pass
 
     @watcher.event
     async def on_member_join(member: discord.Member):
