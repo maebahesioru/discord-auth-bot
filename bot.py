@@ -48,6 +48,21 @@ FX_RETRY_BASE_MS   = max(50, int(os.environ.get("FXTWITTER_RETRY_BASE_MS", 500))
 YAHOO_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 YAHOO_HEADERS = {"User-Agent": YAHOO_UA, "Accept": "application/json, text/plain, */*", "Referer": "https://search.yahoo.co.jp/realtime/search"}
 
+YAHOO_DIRECT_BASE = "https://search.yahoo.co.jp/realtime/api/v1"
+YAHOO_PROXY_BASE = os.environ.get("YAHOO_PROXY", "").rstrip("/")
+
+async def yahoo_fetch(session: aiohttp.ClientSession, path_and_query: str):
+    """生IP→失敗時YAHOO_PROXYフォールバック"""
+    async def _try(url: str):
+        async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
+            return res
+    try:
+        return await _try(f"{YAHOO_DIRECT_BASE}{path_and_query}")
+    except Exception:
+        if YAHOO_PROXY_BASE:
+            return await _try(f"{YAHOO_PROXY_BASE}{path_and_query}")
+        raise
+
 UA_POOL = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
@@ -560,13 +575,12 @@ async def fetch_yahoo_spaces(session: aiohttp.ClientSession, handles: list[str])
     async def fetch_chunk(chunk):
         or_part = " OR ".join(f"ID:{h}" for h in chunk)
         q = _urlparse.quote(f"({or_part}) (URL:x.com/i/spaces OR URL:twitter.com/i/spaces)")
-        url = f"https://search.yahoo.co.jp/realtime/api/v1/pagination?p={q}&md=t&results=40"
         try:
-            async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
-                if res.status != 200:
-                    return []
-                j = await res.json(content_type=None)
-                return j.get("timeline", {}).get("entry", [])
+            res = await yahoo_fetch(session, f"/pagination?p={q}&md=t&results=40")
+            if res.status != 200:
+                return []
+            j = await res.json(content_type=None)
+            return j.get("timeline", {}).get("entry", [])
         except Exception:
             return []
 
@@ -669,9 +683,8 @@ async def run_hashtag_check(monitor: dict):
     q = _urlparse.quote("(" + " ".join(monitor["queries"]) + ")")
     async with aiohttp.ClientSession() as session:
         try:
-            url = f"https://search.yahoo.co.jp/realtime/api/v1/pagination?p={q}&md=t&results=40"
-            async with session.get(url, headers=YAHOO_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as res:
-                entries = (await res.json(content_type=None)).get("timeline", {}).get("entry", []) if res.status == 200 else []
+            res = await yahoo_fetch(session, f"/pagination?p={q}&md=t&results=40")
+            entries = (await res.json(content_type=None)).get("timeline", {}).get("entry", []) if res.status == 200 else []
         except Exception:
             entries = []
 
